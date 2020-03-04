@@ -23,8 +23,14 @@ def guid=''
 // Catalog items
 def choices = [
     'DevOps Team Development / DEV Babylon empty-config / tests',
+    'DevOps Team Development / DEV Babylon empty-config AWS / tests',
+    'DevOps Team Development / DEV Babylon empty-config OSP / tests',
     'DevOps Deployment Testing / TEST Babylon empty-config / tests_prod',
+    'DevOps Deployment Testing / TEST Babylon empty-config AWS / tests_prod',
+    'DevOps Deployment Testing / TEST Babylon empty-config OSP / tests_prod',
     'DevOps Deployment Testing / PROD Babylon empty-config / tests_prod',
+    'DevOps Deployment Testing / PROD Babylon empty-config AWS / tests_prod',
+    'DevOps Deployment Testing / PROD Babylon empty-config OSP / tests_prod',
 ].join("\n")
 
 pipeline {
@@ -69,18 +75,35 @@ pipeline {
                     def item = params.catalog_item.split(' / ')[1].trim()
                     def region = params.catalog_item.split(' / ')[2].trim()
                     echo "'${catalog}' '${item}'"
-                    guid = sh(
-                        returnStdout: true,
-                        script: """
-                          ./opentlc/order_svc_guid.sh \
-                          -c '${catalog}' \
-                          -i '${item}' \
-                          -G '${cf_group}' \
-                          -d 'expiration=7,runtime=8,region=${region}'
-                        """
-                    ).trim()
+
+                    def command = """
+                        ./opentlc/order_svc_guid.sh \
+                        -c '${catalog}' \
+                        -i '${item}' \
+                        -G '${cf_group}' \
+                        -d 'expiration=7,runtime=8,region=${region}'
+                    """
+
+                    try {
+
+                        guid = sh(
+                            returnStdout: true,
+                            script: command
+                        ).trim()
+
+                    } catch(e) {
+
+                        if (! params.cf_debug) {
+                            // Run again but with DEBUG=true
+                            guid = sh(
+                                returnStdout: true,
+                                script: "DEBUG=true " + command
+                            ).trim()
+                        }
+                    }
 
                     echo "GUID is '${guid}'"
+
                 }
             }
         }
@@ -106,7 +129,7 @@ pipeline {
                     ).trim()
 
                     try {
-                    	def m = email =~ /(?m)^Some random password (\w+)$/
+                    	def m = email =~ /(?m)^Some random (?:string|password) (\w+)$/
                     	def password = m[0][1]
                     	echo "password from email = '${password}'"
                     } catch(Exception ex) {
@@ -143,6 +166,8 @@ pipeline {
                 git 'https://github.com/redhat-gpte-devopsautomation/cloudforms-oob'
 
                 sh "./opentlc/delete_svc_guid.sh '${guid}'"
+
+                // TODO: make sure the string OKTODELETE appears in the logs
             }
             post {
                 failure {
